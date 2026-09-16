@@ -113,6 +113,29 @@ export class FootballCatalog {
     return { data, meta: this.meta(data.length, coverage, result.stale) };
   }
 
+  async listRemainingRegularFixtures(
+    league: string,
+    season: number,
+    canonicalStageId: string,
+  ) {
+    const coverage = this.coverage(league, season);
+    const externalId = this.identities.findExternalId({
+      provider: coverage.provider.name,
+      entityType: "stage",
+      canonicalId: canonicalStageId,
+      context: this.seasonContext(coverage),
+    });
+    if (!externalId) {
+      throw new ApplicationError(404, "STAGE_NOT_FOUND", "Stage not found", "The requested stage does not exist in this season.");
+    }
+    const result = await coverage.provider.listRemainingRegularFixtures(
+      this.providerCompetition(coverage),
+      externalId,
+    );
+    const data = result.data.map((fixture) => this.fixture(coverage, fixture));
+    return { data, meta: this.meta(data.length, coverage, result.stale) };
+  }
+
   async listStandingTables(
     league: string,
     season: number,

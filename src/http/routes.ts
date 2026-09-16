@@ -7,12 +7,14 @@ import {
   LeagueQuerySchema,
   LeagueResponseSchema,
   ProblemSchema,
+  RemainingRegularFixtureQuerySchema,
   RoundResponseSchema,
   SeasonQuerySchema,
   StandingQuerySchema,
   StandingResponseSchema,
   type FixtureQuery,
   type LeagueQuery,
+  type RemainingRegularFixtureQuery,
   type SeasonQuery,
   type StandingQuery,
 } from "./schemas.js";
@@ -42,6 +44,18 @@ export function registerFootballRoutes(app: FastifyInstance, catalog: FootballCa
       response: { 200: RoundResponseSchema, ...errorResponses },
     },
   }, async (request) => catalog.listRounds(request.query.league, request.query.season));
+
+  app.get<{ Querystring: RemainingRegularFixtureQuery }>("/v1/fixtures/remaining-regular", {
+    schema: {
+      security: [{ bearerAuth: [] }],
+      querystring: RemainingRegularFixtureQuerySchema,
+      response: { 200: FixtureResponseSchema, ...errorResponses },
+    },
+  }, async (request) => catalog.listRemainingRegularFixtures(
+    request.query.league,
+    request.query.season,
+    request.query.stage,
+  ));
 
   app.get<{ Querystring: FixtureQuery }>("/v1/fixtures", {
     schema: {

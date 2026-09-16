@@ -217,6 +217,12 @@ export const FixtureQuerySchema = Type.Object({
   current: Type.Optional(Type.Boolean()),
 }, { additionalProperties: false });
 
+export const RemainingRegularFixtureQuerySchema = Type.Object({
+  league: Type.String(),
+  season: Season,
+  stage: Id,
+}, { additionalProperties: false });
+
 export const StandingQuerySchema = Type.Object({
   league: Type.String(),
   season: Season,
@@ -226,4 +232,5 @@ export const StandingQuerySchema = Type.Object({
 export type LeagueQuery = Static<typeof LeagueQuerySchema>;
 export type SeasonQuery = Static<typeof SeasonQuerySchema>;
 export type FixtureQuery = Static<typeof FixtureQuerySchema>;
+export type RemainingRegularFixtureQuery = Static<typeof RemainingRegularFixtureQuerySchema>;
 export type StandingQuery = Static<typeof StandingQuerySchema>;

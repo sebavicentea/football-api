@@ -86,6 +86,36 @@ export class PromiedosProvider implements FootballDataProvider {
     };
   }
 
+  async listRemainingRegularFixtures(
+    competition: ProviderCompetition,
+    stageExternalId: string,
+  ): Promise<ProviderResult<ProviderFixture[]>> {
+    const metadata = await this.metadata(competition);
+    const rounds = normalizeRounds(metadata.value.games.filters)
+      .filter((round) => round.stageExternalId === stageExternalId && round.phase === "regular");
+    const results: Awaited<ReturnType<PromiedosProvider["games"]>>[] = [];
+    for (let index = 0; index < rounds.length; index += 4) {
+      results.push(...await Promise.all(
+        rounds.slice(index, index + 4).map((round) => this.games(competition, round.externalId)),
+      ));
+    }
+    const seen = new Set<string>();
+    const data: ProviderFixture[] = [];
+    let stale = metadata.stale;
+    results.forEach((result, index) => {
+      stale = stale || result.stale;
+      const round = rounds[index]!;
+      for (const game of result.value.games) {
+        const status = statusFromGame(game);
+        if (status === "FT" || status === "CANC") continue;
+        if (seen.has(game.id)) continue;
+        seen.add(game.id);
+        data.push(normalizeFixture(game, round, competition.timezone));
+      }
+    });
+    return { data, stale };
+  }
+
   async listStandingTables(
     competition: ProviderCompetition,
     type?: StandingTableType,

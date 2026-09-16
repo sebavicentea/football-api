@@ -75,6 +75,23 @@ const games = {
   }],
 };
 
+function game(id: string, status: { enum: number; name: string; short_name: string }) {
+  return {
+    ...games.games[0]!,
+    id,
+    status: { ...games.games[0]!.status, ...status },
+  };
+}
+
+function fetchByRound(byRound: Record<string, unknown[]>) {
+  return vi.fn<typeof fetch>(async (input) => {
+    const path = new URL(input instanceof Request ? input.url : input).pathname;
+    if (path.includes("tables_and_fixtures")) return Response.json(metadata);
+    const key = decodeURIComponent(path.split("/").pop() ?? "");
+    return Response.json({ TTL: 300, games: byRound[key] ?? [] });
+  });
+}
+
 function createProvider(apiFetch = vi.fn<typeof fetch>(async (input) => {
   const path = new URL(input instanceof Request ? input.url : input).pathname;
   return Response.json(path.includes("tables_and_fixtures") ? metadata : games);
@@ -201,6 +218,123 @@ describe("Promiedos provider adapter", () => {
       { externalId: "Apertura:0:Zona A", stageName: "Apertura", group: "Zona A" },
       { externalId: "Clausura:0:Zona A", stageName: "Clausura", group: "Zona A" },
     ]);
+  });
+
+  it("lists only unfinished regular fixtures for the requested stage", async () => {
+    const apiFetch = fetchByRound({
+      "72_228_8_1": [
+        game("g-ns", { enum: 1, name: "Prog.", short_name: "Prog." }),
+        game("g-pst", { enum: 1, name: "Postergado", short_name: "Post." }),
+        game("g-live", { enum: 2, name: "En juego", short_name: "Live" }),
+        game("g-ft", { enum: 3, name: "Finalizado", short_name: "Fin." }),
+        game("g-canc", { enum: 1, name: "Cancelado", short_name: "Canc." }),
+      ],
+      "72_228_8_9": [
+        game("g-susp", { enum: 2, name: "Suspendido", short_name: "Susp." }),
+        game("g-unk", { enum: 9, name: "Reprogramando", short_name: "Rep." }),
+        game("g-ns", { enum: 1, name: "Prog.", short_name: "Prog." }),
+      ],
+    });
+    const provider = createProvider(apiFetch);
+
+    const result = await provider.listRemainingRegularFixtures(competition, "clausura");
+
+    expect(result.stale).toBe(false);
+    expect(result.data.map((fixture) => [fixture.externalId, fixture.status.short, fixture.round.externalId]))
+      .toEqual([
+        ["g-ns", "NS", "72_228_8_1"],
+        ["g-pst", "PST", "72_228_8_1"],
+        ["g-live", "LIVE", "72_228_8_1"],
+        ["g-susp", "SUSP", "72_228_8_9"],
+        ["g-unk", "UNK", "72_228_8_9"],
+      ]);
+    const fetchedRounds = apiFetch.mock.calls
+      .map(([input]) => new URL(input instanceof Request ? input.url : input).pathname)
+      .filter((path) => path.includes("/league/games/"))
+      .map((path) => decodeURIComponent(path.split("/").pop() ?? ""));
+    expect(fetchedRounds).toEqual(["72_228_8_1", "72_228_8_9"]);
+  });
+
+  it("scopes remaining fixtures to the stage and skips non-regular rounds", async () => {
+    const apiFetch = fetchByRound({
+      "72_228_3_1": [game("g-apertura", { enum: 1, name: "Prog.", short_name: "Prog." })],
+      "72_228_7_-1": [game("g-final", { enum: 1, name: "Prog.", short_name: "Prog." })],
+    });
+    const provider = createProvider(apiFetch);
+
+    const result = await provider.listRemainingRegularFixtures(competition, "apertura");
+
+    expect(result.data.map((fixture) => fixture.externalId)).toEqual(["g-apertura"]);
+    expect(result.data[0]).toMatchObject({ round: { stageExternalId: "apertura" } });
+    expect(apiFetch.mock.calls.map(([input]) =>
+      new URL(input instanceof Request ? input.url : input).pathname,
+    ).join(" ")).not.toContain("72_228_7_-1");
+  });
+
+  it("bounds round-game requests to four in flight and keeps round order", async () => {
+    const manyRoundsMetadata = {
+      ...metadata,
+      games: {
+        filters: [
+          { name: "Partidos actuales", key: "latest" },
+          { name: "Final", key: "final_apertura" },
+          ...Array.from({ length: 7 }, (_, index) => ({
+            name: `Fecha ${index + 1}`,
+            key: `c${index + 1}`,
+          })),
+        ],
+      },
+    };
+    let inFlight = 0;
+    let peak = 0;
+    const apiFetch = vi.fn<typeof fetch>(async (input) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.includes("tables_and_fixtures")) return Response.json(manyRoundsMetadata);
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      inFlight -= 1;
+      const key = decodeURIComponent(path.split("/").pop() ?? "");
+      return Response.json({
+        TTL: 300,
+        games: [game(`g-${key}`, { enum: 1, name: "Prog.", short_name: "Prog." })],
+      });
+    });
+    const provider = createProvider(apiFetch);
+
+    const result = await provider.listRemainingRegularFixtures(competition, "clausura");
+
+    expect(peak).toBe(4);
+    expect(result.data.map((fixture) => fixture.externalId))
+      .toEqual(["g-c1", "g-c2", "g-c3", "g-c4", "g-c5", "g-c6", "g-c7"]);
+  });
+
+  it("propagates stale from cached metadata or round games", async () => {
+    let now = 0;
+    let fail = false;
+    const apiFetch = vi.fn<typeof fetch>(async (input) => {
+      if (fail) throw new Error("upstream down");
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.includes("tables_and_fixtures")) return Response.json(metadata);
+      return Response.json({ TTL: 300, games: [] });
+    });
+    const provider = new PromiedosProvider({
+      baseUrl: "https://provider.invalid",
+      version: "1.11.7.3",
+      timeoutMs: 1_000,
+      metadataCacheTtlMs: 1_000,
+      gamesCacheTtlMs: 1_000,
+      apiFetch,
+      cache: new TtlCache(() => now),
+    });
+
+    const fresh = await provider.listRemainingRegularFixtures(competition, "clausura");
+    expect(fresh.stale).toBe(false);
+
+    now = 2_000;
+    fail = true;
+    const stale = await provider.listRemainingRegularFixtures(competition, "clausura");
+    expect(stale.stale).toBe(true);
   });
 
   it("rejects structurally invalid upstream responses", async () => {

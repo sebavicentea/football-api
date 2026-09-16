@@ -93,5 +93,9 @@ export interface FootballDataProvider {
   listRounds(competition: ProviderCompetition): Promise<ProviderResult<ProviderRound[]>>;
   listFixtures(competition: ProviderCompetition, roundExternalId: string): Promise<ProviderResult<ProviderFixture[]>>;
   listCurrentFixtures(competition: ProviderCompetition): Promise<ProviderResult<ProviderFixture[]>>;
+  listRemainingRegularFixtures(
+    competition: ProviderCompetition,
+    stageExternalId: string,
+  ): Promise<ProviderResult<ProviderFixture[]>>;
   listStandingTables(competition: ProviderCompetition, type?: StandingTableType): Promise<ProviderResult<ProviderStandingTable[]>>;
 }

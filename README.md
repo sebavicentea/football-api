@@ -19,6 +19,7 @@ The server binds to `0.0.0.0:3001` by default and is available locally at `http:
 - `GET /v1/leagues`
 - `GET /v1/fixtures/rounds`
 - `GET /v1/fixtures`
+- `GET /v1/fixtures/remaining-regular` — unfinished regular-phase fixtures for a stage; `stage` is a canonical stage ID discovered from `GET /v1/fixtures/rounds`
 - `GET /v1/standings`
 - `GET /openapi.json`
 
