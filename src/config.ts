@@ -8,6 +8,7 @@ export interface Config {
   upstreamTimeoutMs: number;
   metadataCacheTtlMs: number;
   gamesCacheTtlMs: number;
+  scheduleCacheTtlMs: number;
 }
 
 function required(name: string): string {
@@ -36,6 +37,7 @@ export function loadConfig(): Config {
     promiedosVersion: process.env.PROMIEDOS_VERSION?.trim() || "1.11.7.3",
     upstreamTimeoutMs: positiveInteger("UPSTREAM_TIMEOUT_MS", 15_000),
     metadataCacheTtlMs: positiveInteger("METADATA_CACHE_TTL_MS", 21_600_000),
-    gamesCacheTtlMs: positiveInteger("GAMES_CACHE_TTL_MS", 604_800_000),
+    gamesCacheTtlMs: positiveInteger("GAMES_CACHE_TTL_MS", 300_000),
+    scheduleCacheTtlMs: positiveInteger("SCHEDULE_CACHE_TTL_MS", 604_800_000),
   };
 }

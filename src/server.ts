@@ -21,6 +21,7 @@ const provider = new PromiedosProvider({
   timeoutMs: config.upstreamTimeoutMs,
   metadataCacheTtlMs: config.metadataCacheTtlMs,
   gamesCacheTtlMs: config.gamesCacheTtlMs,
+  scheduleCacheTtlMs: config.scheduleCacheTtlMs,
   apiFetch: fetch,
   cache: new TtlCache(Date.now, 100, cacheStore),
 });

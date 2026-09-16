@@ -102,6 +102,7 @@ function createProvider(apiFetch = vi.fn<typeof fetch>(async (input) => {
     timeoutMs: 1_000,
     metadataCacheTtlMs: 1_000,
     gamesCacheTtlMs: 1_000,
+    scheduleCacheTtlMs: 1_000,
     apiFetch,
     cache: new TtlCache(),
   });
@@ -327,6 +328,7 @@ describe("Promiedos provider adapter", () => {
       timeoutMs: 1_000,
       metadataCacheTtlMs: 1_000,
       gamesCacheTtlMs: 1_000,
+      scheduleCacheTtlMs: 1_000,
       apiFetch,
       cache: new TtlCache(() => now),
     });
@@ -359,6 +361,7 @@ describe("Promiedos provider adapter", () => {
       timeoutMs: 1_000,
       metadataCacheTtlMs: 1_000,
       gamesCacheTtlMs: 1_000,
+      scheduleCacheTtlMs: 1_000,
       apiFetch,
       cache: new TtlCache(() => now),
     });
@@ -372,6 +375,57 @@ describe("Promiedos provider adapter", () => {
     const stale = await provider.listRemainingRegularFixtures(competition, "clausura");
     expect(stale.stale).toBe(true);
     expect(stale.data.map((fixture) => fixture.externalId)).toEqual(["g-good"]);
+  });
+
+  it("refreshes selected rounds on the games TTL and future schedules weekly", async () => {
+    let now = 0;
+    let selectedKey = "72_228_8_1";
+    const counts = new Map<string, number>();
+    const apiFetch = vi.fn<typeof fetch>(async (input) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.includes("tables_and_fixtures")) {
+        return Response.json({
+          ...metadata,
+          games: {
+            filters: filters.map((filter) => ({
+              ...filter,
+              ...(filter.key === selectedKey ? { selected: true } : {}),
+            })),
+          },
+        });
+      }
+      const key = decodeURIComponent(path.split("/").pop() ?? "");
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      return Response.json({
+        TTL: 300,
+        games: [game(`g-${key}`, { enum: 1, name: "Prog.", short_name: "Prog." })],
+      });
+    });
+    const provider = new PromiedosProvider({
+      baseUrl: "https://provider.invalid",
+      version: "1.11.7.3",
+      timeoutMs: 1_000,
+      metadataCacheTtlMs: 1_000,
+      gamesCacheTtlMs: 1_000,
+      scheduleCacheTtlMs: 10_000,
+      apiFetch,
+      cache: new TtlCache(() => now),
+    });
+
+    await provider.listRemainingRegularFixtures(competition, "clausura");
+    expect(counts.get("72_228_8_1")).toBe(1);
+    expect(counts.get("72_228_8_9")).toBe(1);
+
+    now = 1_500;
+    await provider.listRemainingRegularFixtures(competition, "clausura");
+    expect(counts.get("72_228_8_1")).toBe(2);
+    expect(counts.get("72_228_8_9")).toBe(1);
+
+    now = 2_600;
+    selectedKey = "72_228_8_9";
+    await provider.listRemainingRegularFixtures(competition, "clausura");
+    expect(counts.get("72_228_8_1")).toBe(3);
+    expect(counts.get("72_228_8_9")).toBe(2);
   });
 
   it("rejects structurally invalid upstream responses", async () => {

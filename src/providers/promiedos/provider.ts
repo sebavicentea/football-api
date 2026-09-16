@@ -32,6 +32,7 @@ export interface PromiedosProviderOptions {
   timeoutMs: number;
   metadataCacheTtlMs: number;
   gamesCacheTtlMs: number;
+  scheduleCacheTtlMs: number;
   apiFetch: ApiFetch;
   cache: TtlCache;
 }
@@ -91,12 +92,17 @@ export class PromiedosProvider implements FootballDataProvider {
     stageExternalId: string,
   ): Promise<ProviderResult<ProviderFixture[]>> {
     const metadata = await this.metadata(competition);
+    const selectedIndex = metadata.value.games.filters
+      .findIndex((filter) => filter.selected === true);
     const rounds = normalizeRounds(metadata.value.games.filters)
       .filter((round) => round.stageExternalId === stageExternalId && round.phase === "regular");
     const results: Awaited<ReturnType<PromiedosProvider["games"]>>[] = [];
     for (let index = 0; index < rounds.length; index += 4) {
       results.push(...await Promise.all(
-        rounds.slice(index, index + 4).map((round) => this.games(competition, round.externalId)),
+        rounds.slice(index, index + 4).map((round) =>
+          selectedIndex >= 0 && round.order > selectedIndex
+            ? this.schedule(competition, round.externalId)
+            : this.games(competition, round.externalId)),
       ));
     }
     const seen = new Set<string>();
@@ -138,10 +144,23 @@ export class PromiedosProvider implements FootballDataProvider {
   }
 
   private games(competition: ProviderCompetition, round: string) {
+    return this.cachedGames(competition, round, "games", this.options.gamesCacheTtlMs);
+  }
+
+  private schedule(competition: ProviderCompetition, round: string) {
+    return this.cachedGames(competition, round, "schedule", this.options.scheduleCacheTtlMs);
+  }
+
+  private cachedGames(
+    competition: ProviderCompetition,
+    round: string,
+    namespace: "games" | "schedule",
+    ttlMs: number,
+  ) {
     const league = competition.externalLeagueId;
     return this.options.cache.getOrLoad(
-      `promiedos:games:${league}:${round}`,
-      this.options.gamesCacheTtlMs,
+      `promiedos:${namespace}:${league}:${round}`,
+      ttlMs,
       async () => {
         const value = await this.request(
           `/league/games/${encodeURIComponent(league)}/${encodeURIComponent(round)}`,

@@ -19,6 +19,7 @@ export const MetadataSchema = Type.Object({
     filters: Type.Array(Type.Object({
       name: Type.String(),
       key: Type.String(),
+      selected: Type.Optional(Type.Boolean()),
     })),
   }),
   tables_groups: Type.Array(Type.Object({
