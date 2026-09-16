@@ -316,7 +316,10 @@ describe("Promiedos provider adapter", () => {
       if (fail) throw new Error("upstream down");
       const path = new URL(input instanceof Request ? input.url : input).pathname;
       if (path.includes("tables_and_fixtures")) return Response.json(metadata);
-      return Response.json({ TTL: 300, games: [] });
+      return Response.json({
+        TTL: 300,
+        games: [game("g-1", { enum: 1, name: "Prog.", short_name: "Prog." })],
+      });
     });
     const provider = new PromiedosProvider({
       baseUrl: "https://provider.invalid",
@@ -335,6 +338,40 @@ describe("Promiedos provider adapter", () => {
     fail = true;
     const stale = await provider.listRemainingRegularFixtures(competition, "clausura");
     expect(stale.stale).toBe(true);
+  });
+
+  it("serves the last good round when a refresh returns an empty payload", async () => {
+    let now = 0;
+    let empty = false;
+    const apiFetch = vi.fn<typeof fetch>(async (input) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.includes("tables_and_fixtures")) return Response.json(metadata);
+      return Response.json({
+        TTL: 300,
+        games: empty
+          ? []
+          : [game("g-good", { enum: 1, name: "Prog.", short_name: "Prog." })],
+      });
+    });
+    const provider = new PromiedosProvider({
+      baseUrl: "https://provider.invalid",
+      version: "1.11.7.3",
+      timeoutMs: 1_000,
+      metadataCacheTtlMs: 1_000,
+      gamesCacheTtlMs: 1_000,
+      apiFetch,
+      cache: new TtlCache(() => now),
+    });
+
+    const fresh = await provider.listRemainingRegularFixtures(competition, "clausura");
+    expect(fresh.stale).toBe(false);
+    expect(fresh.data.map((fixture) => fixture.externalId)).toEqual(["g-good"]);
+
+    now = 2_000;
+    empty = true;
+    const stale = await provider.listRemainingRegularFixtures(competition, "clausura");
+    expect(stale.stale).toBe(true);
+    expect(stale.data.map((fixture) => fixture.externalId)).toEqual(["g-good"]);
   });
 
   it("rejects structurally invalid upstream responses", async () => {

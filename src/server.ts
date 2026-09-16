@@ -8,11 +8,13 @@ import {
   LEAGUE_SEASON,
   LEAGUE_TIMEZONE,
 } from "./domain/football.js";
+import { SqliteCacheStore } from "./persistence/sqlite/cache-store.js";
 import { SqliteIdentityRepository } from "./persistence/sqlite/identity-repository.js";
 import { PromiedosProvider } from "./providers/promiedos/provider.js";
 
 const config = loadConfig();
 const identities = new SqliteIdentityRepository(config.databasePath);
+const cacheStore = new SqliteCacheStore(config.databasePath);
 const provider = new PromiedosProvider({
   baseUrl: config.promiedosBaseUrl,
   version: config.promiedosVersion,
@@ -20,7 +22,7 @@ const provider = new PromiedosProvider({
   metadataCacheTtlMs: config.metadataCacheTtlMs,
   gamesCacheTtlMs: config.gamesCacheTtlMs,
   apiFetch: fetch,
-  cache: new TtlCache(),
+  cache: new TtlCache(Date.now, 100, cacheStore),
 });
 const app = await buildApp({
   appToken: config.appToken,
@@ -42,6 +44,7 @@ await app.listen({ host: config.host, port: config.port });
 async function shutdown() {
   await app.close();
   identities.close();
+  cacheStore.close();
   process.exit(0);
 }
 

@@ -142,7 +142,16 @@ export class PromiedosProvider implements FootballDataProvider {
     return this.options.cache.getOrLoad(
       `promiedos:games:${league}:${round}`,
       this.options.gamesCacheTtlMs,
-      () => this.request(`/league/games/${encodeURIComponent(league)}/${encodeURIComponent(round)}`, GamesSchema),
+      async () => {
+        const value = await this.request(
+          `/league/games/${encodeURIComponent(league)}/${encodeURIComponent(round)}`,
+          GamesSchema,
+        );
+        if (round !== "latest" && value.games.length === 0) {
+          throw new ProviderError("invalid-response", "The football data provider returned an empty round.");
+        }
+        return value;
+      },
     );
   }
 

@@ -13,6 +13,8 @@ npm run dev
 
 The server binds to `0.0.0.0:3001` by default and is available locally at `http://127.0.0.1:3001`. Production requires one instance with a durable volume for `DATABASE_PATH`; use a shared database adapter before scaling horizontally.
 
+Round/game snapshots are cached durably in `DATABASE_PATH` (`GAMES_CACHE_TTL_MS`, one week by default). When a refresh fails or the provider answers an empty round, the last good expired value is served with `stale: true`.
+
 ## Interface
 
 - `GET /health`

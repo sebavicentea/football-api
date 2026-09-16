@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { TtlCache } from "../src/cache/ttl-cache.js";
+import { TtlCache, type CacheEntry, type CacheStore } from "../src/cache/ttl-cache.js";
 
 describe("TTL cache", () => {
   it("coalesces concurrent loads for one upstream resource", async () => {
@@ -27,5 +27,30 @@ describe("TTL cache", () => {
     });
 
     expect(result).toEqual({ value: "current", stale: true });
+  });
+
+  it("persists entries through a store across cache instances", async () => {
+    const persisted = new Map<string, CacheEntry<unknown>>();
+    const store: CacheStore = {
+      get: (key) => persisted.get(key),
+      set: (key, entry) => persisted.set(key, entry),
+    };
+    let now = 0;
+    const first = new TtlCache(() => now, 100, store);
+    await first.getOrLoad("games", 10, async () => ({ ok: true }));
+    expect(persisted.get("games")).toEqual({ value: { ok: true }, expiresAt: 10 });
+
+    now = 5;
+    const second = new TtlCache(() => now, 100, store);
+    const reload = vi.fn(async () => ({ ok: false }));
+    const fresh = await second.getOrLoad("games", 10, reload);
+    expect(reload).not.toHaveBeenCalled();
+    expect(fresh).toEqual({ value: { ok: true }, stale: false });
+
+    now = 20;
+    const stale = await second.getOrLoad("games", 10, async () => {
+      throw new Error("offline");
+    });
+    expect(stale).toEqual({ value: { ok: true }, stale: true });
   });
 });
